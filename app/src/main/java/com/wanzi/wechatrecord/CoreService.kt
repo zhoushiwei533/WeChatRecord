@@ -28,7 +28,8 @@ class CoreService : IntentService("CoreService") {
 
     private val WX_FILE_PATH = "/storage/emulated/0/Tencent/micromsg/"                    // 微信保存聊天时语音、图片、视频文件的地址
 
-    private val currApkPath = "/data/data/com.dfsc.wechatrecord/"
+    //  private val currApkPath = "/data/data/com.dfsc.wechatrecord/"
+    private val currApkPath = "/storage/emulated/0/"
     private val COPY_WX_DATA_DB = "wx_data.db"
 
     private var uin = ""
@@ -68,11 +69,14 @@ class CoreService : IntentService("CoreService") {
 
         // 获取当前微信登录用户的数据库文件父级文件夹名（MD5("mm"+uin) ）
         uinEnc = MD5.getMD5Str("mm$uin")
+        log("当前微信用户数据库文件父级文件名：$uinEnc")
         // 递归查询微信本地数据库文件
         val dbDir = File(WX_DB_DIR_PATH + uinEnc)
+        log("微信数据库文件目录：$dbDir")
         val list = FileUtils.searchFile(dbDir, WX_DB_FILE_NAME)
         for (file in list) {
             val copyFilePath = currApkPath + COPY_WX_DATA_DB
+            log("微信数据库文件路径：${file.absolutePath}")
             try {
                 // 将微信数据库拷贝出来，因为直接连接微信的db，会导致微信崩溃
                 FileUtils.copyFile(file.absolutePath, copyFilePath)
@@ -255,6 +259,7 @@ class CoreService : IntentService("CoreService") {
                             }
                         }
                     }
+                    log("聊天信息：$message")
                     message.save()
                 }
             }
@@ -324,9 +329,9 @@ class CoreService : IntentService("CoreService") {
 
     private fun IntentService.toast(text: CharSequence, duration: Int = Toast.LENGTH_SHORT) {
         val handler = Handler(Looper.getMainLooper())
-        handler.post({
+        handler.post {
             Toast.makeText(this, text, duration).show()
-        })
+        }
     }
 
     private fun log(msg: String) {

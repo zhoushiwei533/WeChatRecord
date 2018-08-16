@@ -18,7 +18,7 @@ object TimeUtils {
      * @return
      */
     fun timeFormat(millisecond: Long, style: String): String {
-        val simpleDateFormat = SimpleDateFormat(style)
+        val simpleDateFormat = SimpleDateFormat(style, Locale.CHINA)
         val date = Date(millisecond)
         return simpleDateFormat.format(date)
     }
