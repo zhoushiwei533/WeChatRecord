@@ -83,6 +83,10 @@ object FileUtils {
         try {
             val oldFile = File(oldPath)
             if (oldFile.exists()) { //文件存在时
+                var newFile = File(newPath)
+                if(newFile.exists()){
+                    newFile.delete()
+                }
                 val inStream = FileInputStream(oldPath) //读入原文件
                 val fs = FileOutputStream(newPath)
                 val buffer = ByteArray(1024)

@@ -7,11 +7,12 @@ import org.litepal.crud.DataSupport
  */
 
 class Message : DataSupport() {
+    var msgId:Long = 0
     var msgSvrId = ""
     var type = ""
-    var isSend = ""           // 1：发送   0：接收   2：系统消息
-    var createTime = ""
     var talker = ""
     var content = ""
+    var isSend = ""           // 1：发送   0：接收   2：系统消息
+    var createTime = ""
     var imgPath = ""
 }

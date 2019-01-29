@@ -7,7 +7,7 @@ import java.io.Serializable
  * Created by WZ on 2018-01-29.
  */
 
-class Contact : DataSupport(), Serializable {
+class Contact : Serializable {
     var username = ""
     var nickname = ""
     var type = ""

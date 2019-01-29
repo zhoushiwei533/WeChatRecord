@@ -66,7 +66,7 @@ class MainAc : AppCompatActivity() {
                         .content("请授予本APP Root权限")
                         .positiveText("确定")
                         .onPositive { _, _ ->
-                            goMIUIPermission()
+                            //goMIUIPermission()
                         }
                         .show()
             } else {

