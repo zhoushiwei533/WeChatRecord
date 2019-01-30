@@ -1,7 +1,9 @@
 package com.wanzi.wechatrecord
 
 import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.app.IntentService
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -11,6 +13,7 @@ import android.widget.Toast
 import org.jsoup.Jsoup
 import java.io.File
 import android.os.Looper
+import com.squareup.haha.perflib.Main
 import com.wanzi.wechatrecord.entry.*
 import com.wanzi.wechatrecord.util.*
 import net.sqlcipher.database.SQLiteDatabase
@@ -39,9 +42,14 @@ class CoreService : IntentService("CoreService") {
     lateinit var chatCollectService:ChatCollectService;
     @SuppressLint("MissingPermission")
     override fun onHandleIntent(intent: Intent?) {
-        if(chatCollectService==null) {
-            chatCollectService = ChatCollectService();
+        if(MainAc.staticObj.RUN_STATUS){
+            return
         }
+        startBroad()
+        MainAc.staticObj.RUN_STATUS=true;
+
+        chatCollectService = ChatCollectService();
+
         // 获取数据库密码 数据库密码是IMEI和uin合并后计算MD5值取前7位
         // 获取imei
         val manager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
@@ -61,35 +69,39 @@ class CoreService : IntentService("CoreService") {
             }
             // 获取数据库密码
             dbPwd = MD5.getMD5Str(imei + uin).substring(0, 7)
-            log("数据库密码：$dbPwd")
+            log("获取数据库密码：$dbPwd",true)
             FileUtils.writeLog(this, "数据库密码：$dbPwd\n")
         } catch (e: Exception) {
-            log("破解数据库失败：${e.message}")
+            MainAc.staticObj.RUN_STATUS=false;
+            log("破解数据库失败：${e.message}",true)
             FileUtils.writeLog(this, "破解数据库失败：${e.message}\n")
             toast("破解数据库失败：${e.message}")
         }
 
         // 获取当前微信登录用户的数据库文件父级文件夹名（MD5("mm"+uin) ）
         uinEnc = MD5.getMD5Str("mm$uin")
-        log("当前微信用户数据库文件父级文件名：$uinEnc")
+        log("当前微信用户数据库文件父级文件名：$uinEnc",true)
         // 递归查询微信本地数据库文件
         val dbDir = File(WX_DB_DIR_PATH + uinEnc)
-        log("微信数据库文件目录：$dbDir")
+        log("微信数据库文件目录：$dbDir",true)
         val list = FileUtils.searchFile(dbDir, WX_DB_FILE_NAME)
         for (file in list) {
             val copyFilePath = currApkPath + COPY_WX_DATA_DB
-            log("微信数据库文件路径：${file.absolutePath}")
+            log("微信数据库文件路径：${file.absolutePath}",true)
             try {
                 // 将微信数据库拷贝出来，因为直接连接微信的db，会导致微信崩溃
+                log("复制数据库",true)
                 FileUtils.copyFile(file.absolutePath, copyFilePath)
                 // 打开微信数据库
                 openWXDB(File(copyFilePath), dbPwd)
             } catch (e: Exception) {
-                log("复制数据库失败：${e.message}")
+                MainAc.staticObj.RUN_STATUS=false;
+                log("复制数据库失败：${e.message}",true)
                 FileUtils.writeLog(this, "复制数据库失败：${e.message}\n")
                 toast("复制数据库失败：${e.message}")
             }
         }
+        MainAc.staticObj.RUN_STATUS=false;
     }
 
     private fun openWXDB(file: File, password: String) {
@@ -106,15 +118,16 @@ class CoreService : IntentService("CoreService") {
             // 打开数据库连接
             val db = SQLiteDatabase.openOrCreateDatabase(file, password, null, hook)
 
-            //openContactTable(db)
-            //openChatRoomTable(db)
+            openContactTable(db)
+            openChatRoomTable(db)
             openMessageTable(db)
 
             //openUserInfoTable(db)
 
             db.close()
         } catch (e: Exception) {
-            log("失败：${e.message}")
+            MainAc.staticObj.RUN_STATUS=false;
+            log("失败：${e.message}",true)
             if(e.message!!.contains("file is not a database:")){
                 file.delete()
                 onHandleIntent(null);
@@ -156,6 +169,7 @@ class CoreService : IntentService("CoreService") {
         // verifyFlag!=0：公众号等类型 type=33：微信功能 type=2：未知 type=4：非好友
         // 一般公众号原始ID开头都是gh_
         // 群ID的结尾是@chatroom
+        log("开始同步联系人",true)
         val cursor = db.rawQuery("select * from rcontact where " +
                 "username not like 'gh_%' " , arrayOf())
         if (cursor.count > 0) {
@@ -181,11 +195,13 @@ class CoreService : IntentService("CoreService") {
             log("saveContact ：$isSucces")
         }
         cursor.close()
+        log("结束同步联系人",true)
 
     }
 
     // 打开聊天记录表
     private fun openMessageTable(db: SQLiteDatabase) {
+        log("开始同步聊天信息",true)
         // 一般公众号原始ID开头都是gh_
         val cursor = db.rawQuery("select * from message where talker not like 'gh_%' and msgid > ? ", arrayOf(getLastMsgId()))
         if (cursor.count > 0) {
@@ -284,6 +300,7 @@ class CoreService : IntentService("CoreService") {
            // }
         }
         cursor.close()
+        log("结束同步聊天信息",true)
     }
 
     // 获取最后一条消息ID
@@ -295,6 +312,7 @@ class CoreService : IntentService("CoreService") {
 
     // 打开微信群表
     private fun openChatRoomTable(db: SQLiteDatabase) {
+        log("开始同步群信息",true)
         val cursor = db.rawQuery("select * from chatroom ", arrayOf())
         if (cursor.count > 0) {
             var roomList = ArrayList<ChatRoom>()
@@ -327,7 +345,7 @@ class CoreService : IntentService("CoreService") {
                 //chatRoom.roomOwner = roomOwner
                 //chatRoom.selfDisplayName = selfDisplayName
                 //chatRoom.modifyTime = modifyTime
-                log("chatRoom：$chatRoom")
+                //log("chatRoom：$chatRoom")
                 roomList.add(chatRoom)
 
                     //chatRoom.save()
@@ -349,17 +367,49 @@ class CoreService : IntentService("CoreService") {
             log("saveChatroom ：$isSucces")
         }
         cursor.close()
+        log("结束同步群信息",true)
     }
 
     private fun IntentService.toast(text: CharSequence, duration: Int = Toast.LENGTH_SHORT) {
+        addMsg(text.toString())
         val handler = Handler(Looper.getMainLooper())
         handler.post {
             Toast.makeText(this, text, duration).show()
         }
     }
 
-    private fun log(msg: String) {
+    private fun log(msg: String,isShow:Boolean=false) {
+        if(isShow) {
+            addMsg(msg)
+        }
         LogUtils.i(this@CoreService, msg)
+    }
+
+    private fun clearMsg(){
+        val intent = Intent()
+        intent.action = MainAc.staticObj.ACTION_CHAT_BROAD
+        intent.type=MainAc.staticObj.broad_clear_msg
+        intent.putExtra("type",MainAc.staticObj.broad_clear_msg)
+        sendBroadcast(intent)
+    }
+
+    private fun addMsg(msg:String){
+        val intent = Intent()
+        intent.action = MainAc.staticObj.ACTION_CHAT_BROAD
+
+        intent.putExtra("type",MainAc.staticObj.broad_add_msg)
+        intent.putExtra("msg",msg)
+        sendBroadcast(intent)
+    }
+
+
+    private fun startBroad(){
+        clearMsg()
+        val intent = Intent()
+        intent.action = MainAc.staticObj.ACTION_CHAT_BROAD
+
+        intent.type=MainAc.staticObj.broad_start_task
+        sendBroadcast(intent)
     }
 
 }
