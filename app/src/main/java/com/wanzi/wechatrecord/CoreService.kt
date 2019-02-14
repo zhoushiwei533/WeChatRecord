@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.IntentService
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -40,8 +41,29 @@ class CoreService : IntentService("CoreService") {
     private lateinit var userInfo: UserInfo       // 用户
     private var uinEnc = ""                       // 加密后的uin
     lateinit var chatCollectService:ChatCollectService;
+
+
+    
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        var aManager:AlarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        var calendar: Calendar = Calendar.getInstance();
+        calendar.set(Calendar.HOUR_OF_DAY,0);
+        calendar.set(Calendar.MINUTE,1);
+        calendar.set(Calendar.SECOND,0);
+        calendar.add(Calendar.DATE,1)
+
+        var intent =  Intent(this, TimeBootBroadcastReceiver::class.java);
+        val pendingIntent = PendingIntent.getBroadcast(this, 0, intent, 0)
+        log("设置下次定时任务",true)
+        aManager.setExact(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), pendingIntent);
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+
     @SuppressLint("MissingPermission")
     override fun onHandleIntent(intent: Intent?) {
+        //setAlarm(this)
         if(MainAc.staticObj.RUN_STATUS){
             return
         }
@@ -380,6 +402,7 @@ class CoreService : IntentService("CoreService") {
 
     private fun log(msg: String,isShow:Boolean=false) {
         if(isShow) {
+            FileUtils.writeLog(this, "$msg \n")
             addMsg(msg)
         }
         LogUtils.i(this@CoreService, msg)

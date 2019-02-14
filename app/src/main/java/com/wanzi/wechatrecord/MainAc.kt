@@ -33,7 +33,7 @@ import android.content.pm.ResolveInfo
 class MainAc : AppCompatActivity() {
 
     private lateinit var binding: AcMainBinding
-    private lateinit var aManager: AlarmManager
+    //private lateinit var aManager: AlarmManager
     private lateinit var ctx: Context
     private lateinit var chatBroadcastReceiver : ChatBroadcastReceiver
     object staticObj{
@@ -50,9 +50,9 @@ class MainAc : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ctx=this
-        aManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        //aManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         //启动定时任务
-        setAlarm(this,aManager)
+        //setAlarm(this,aManager)
 
         //绑定
         chatBroadcastReceiver=ChatBroadcastReceiver(this)
@@ -98,6 +98,7 @@ class MainAc : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        chatBroadcastReceiver.unregisterAction()
         CustomApplication.getRefWatcher(this).watch(this)
     }
 
@@ -171,18 +172,18 @@ class MainAc : AppCompatActivity() {
     }
 
 
-    fun setAlarm(context: Context, aManager: AlarmManager) {
-        var calendar: Calendar = Calendar.getInstance();
-        calendar.set(Calendar.HOUR_OF_DAY,0);
-        calendar.set(Calendar.MINUTE,1);
-        calendar.set(Calendar.SECOND,0);
-        calendar.add(Calendar.DAY_OF_MONTH,1)
-        var intent =  Intent(this, CoreService::class.java);
-        intent.setAction(staticObj.ACTION_ALARM);
-        var pendingIntent:PendingIntent  = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
-        aManager.cancel(pendingIntent)
-        aManager.setExact(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), pendingIntent);
-    }
+//    fun setAlarm(context: Context, aManager: AlarmManager) {
+//        var calendar: Calendar = Calendar.getInstance();
+//        calendar.set(Calendar.HOUR_OF_DAY,0);
+//        calendar.set(Calendar.MINUTE,1);
+//        calendar.set(Calendar.SECOND,0);
+//        calendar.add(Calendar.DATE,1)
+//        var intent =  Intent(this, CoreService::class.java);
+//        intent.setAction(staticObj.ACTION_ALARM);
+//        var pendingIntent:PendingIntent  = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
+//        //aManager.cancel(pendingIntent)
+//        aManager.setExact(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), pendingIntent);
+//    }
 
     inner class ChatBroadcastReceiver constructor(c: Context): BroadcastReceiver() {
         lateinit var context: Context
@@ -194,12 +195,13 @@ class MainAc : AppCompatActivity() {
         fun  registerAction(){
             var filter  =  IntentFilter();
             filter.addAction(MainAc.staticObj.ACTION_CHAT_BROAD);
-            //context.unregisterReceiver(this)
-            //val pm = context.packageManager
-            //val resolveInfos = pm.queryBroadcastReceivers(filter, 0)
+
             context.registerReceiver(this,filter);
         }
 
+        fun  unregisterAction(){
+            context.unregisterReceiver(this)
+        }
 
         override fun onReceive(p0: Context?, intent: Intent?) {
 
@@ -209,8 +211,6 @@ class MainAc : AppCompatActivity() {
                 addMsg(msg)
             }else if(type==staticObj.broad_clear_msg){
                 clearMsg()
-            }else if(type==staticObj.broad_start_task){
-                setAlarm(context,aManager)
             }
         }
 
